@@ -1,0 +1,33 @@
+# The wishlist. Editing this file is the UI.
+# Each entry is parsed into an agent.contracts.WishlistItem (see src/agent/contracts.py).
+# This sample is illustrative — replace with your own items.
+
+items:
+  - id: sony-wh1000xm5
+    name: Sony WH-1000XM5
+    query: Sony WH-1000XM5 headphones
+    target_price: 1100.00
+    currency: PLN
+    acceptable_conditions: [new, refurbished]
+    brand: Sony
+    model: WH-1000XM5
+    must_have:
+      - black
+    deal_breakers:
+      - for parts
+    shop_urls:
+      - https://www.example-shop.pl/sony-wh1000xm5
+    notes: EU plug only.
+
+  - id: kindle-paperwhite-2024
+    name: Kindle Paperwhite (2024)
+    query: Kindle Paperwhite 2024 16GB
+    target_price: 550.00
+    currency: PLN
+    acceptable_conditions: [new]
+    brand: Amazon
+    must_have:
+      - 16GB
+    deal_breakers:
+      - ads
+      - kids edition
