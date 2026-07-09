@@ -31,5 +31,11 @@ RISK_MIN_RECALL: float = 0.90
 # Hard ceiling per pipeline run; costs.py asserts against this.
 MAX_RUN_COST_USD: Decimal = Decimal("0.50")
 
+# --- Storage --------------------------------------------------------------- #
+# SQLite location (v1). The DynamoDB port (WP-12) replaces the implementation,
+# not this value. The `data/` dir is created on first open and gitignored until
+# WP-5 decides how history is persisted across runs.
+DB_PATH: str = "data/wishlist.db"
+
 # --- Defaults -------------------------------------------------------------- #
 DEFAULT_CURRENCY: str = "PLN"

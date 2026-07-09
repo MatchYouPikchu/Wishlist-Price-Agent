@@ -12,11 +12,13 @@ the stable brief — keep it ≤50 lines.
 - `src/agent/fetchers/` — `allegro.py` (Tier 1 API), `shop_url.py` (Tier 2 URLs).
 - `src/agent/llm/` — matcher, risk, judge, composer, extractor; `client.py` wraps
   all calls; `prompts/` holds one versioned `.md` per prompt.
+- `src/agent/wishlist.py` — parse `wishlist.yaml` → `WishlistItem` (friendly errors).
 - `src/agent/storage.py` — SQLite (v1); interface stays stable for DynamoDB (v2).
 - `src/agent/notify/email.py` — SMTP (v1) → SES (v2).
 - `src/agent/costs.py` — per-component cost ledger + budget assertion.
 - `evals/` — mirrors the LLM component list; the eval IS the test suite.
 - `tests/` — plain unit tests for the boring code.
+- `docs/plans/` — reviewed per-WP execution plans; `.claude/agents/` — subagents.
 
 ## Commands
 - `uv sync --extra dev` — install.
@@ -35,6 +37,8 @@ the stable brief — keep it ≤50 lines.
   "done" means the eval passes, not that the code looks right.
 - One work package per session (see `PLAN.md`). Each ends with a `DECISIONS.md`
   entry and a commit tagged with the WP number.
+- Before merging a WP PR, run the `plan-guardian` subagent
+  (`.claude/agents/plan-guardian.md`) on the diff; fix BLOCKING findings.
 - Human-only tasks (🧑 in `PLAN.md`) — credentials, labeling, budget/threshold
   calls — are not delegated.
 

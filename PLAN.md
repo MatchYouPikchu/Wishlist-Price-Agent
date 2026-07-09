@@ -112,10 +112,12 @@ component list one-to-one.
 - **WP-3 · Allegro fetcher** — 🧑 register at developer.allegro.pl first
   (sandbox + prod keys). Agent builds OAuth flow + search → `RawListing`.
   **Done:** live sandbox call returns parsed listings; failures logged, not
-  raised.
+  raised. *(Reordered after WP-4 — blocked on credentials; see DECISIONS.md.)*
 - **WP-4 · URL watcher (dumb version)** — fetch configured product URLs,
   extract price via hand-written per-shop selectors (self-healing comes later).
-  **Done:** prices from 2–3 real shop pages land in storage.
+  **Done:** prices from 2–3 real shop pages land in storage. *(Pulled ahead of
+  WP-3: needs no credentials; both implement the same `Fetcher` protocol, so
+  v1 can go live Allegro-free and Allegro lands later as additive.)*
 - **WP-5 · Threshold notifier + daily run** — hard rule `price <= target`, SMTP
   email, `run.yml` cron wired end-to-end. **Done:** a real email arrives from a
   scheduled CI run. v1 is live; price history starts accumulating.

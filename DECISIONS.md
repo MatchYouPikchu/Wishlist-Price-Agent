@@ -62,3 +62,61 @@ is deliberately impossible to miss).
 **Open for 🧑 review.** Field names and the deal-breaker/must-have vocabulary on
 `WishlistItem` are the product's PM surface — confirm they match how you'd
 actually describe a wishlist item before they harden.
+
+---
+
+## WP-2 · Storage + wishlist loader
+
+**Decided.** `src/agent/storage.py` (`Storage` class over stdlib `sqlite3`) and
+`src/agent/wishlist.py` (`load_wishlist` + `WishlistError`). Five choices, all
+pre-agreed in `docs/plans/WP-2.md`:
+
+- **D1 — JSON payload + query columns.** Every row stores the full contract
+  model as `model_dump_json()` and is rehydrated with `model_validate_json()`;
+  typed columns exist only for what we filter/order on. Storage never re-models
+  the domain, so the DynamoDB port (WP-12) is a backend swap, not a re-design.
+- **D2 — money as TEXT.** The `price` column stores the exact `Decimal` string,
+  never SQLite `REAL`. A round-trip test asserts `Decimal("19.99")` survives.
+- **D3 — CI dry-run only initializes a throwaway DB.** PLAN.md's "DB file
+  committed back by CI dry-run" is **deferred to WP-5**: committing state from
+  PR CI is a footgun, and the cron in `run.yml` is what actually accumulates
+  history. `*.db` stays gitignored until then.
+- **D4 — feedback uses primitives.** `record_feedback(alert_id, verdict,
+  created_at)` with `verdict in {up, down}`; **no `Feedback` contract added** —
+  WP-13 defines that when it knows what the endpoint needs.
+- **D5 — timestamps as ISO-8601 UTC TEXT** in query columns; payload JSON is the
+  source of truth.
+
+Interface discipline for the v2 port: no SQL types/cursors in signatures,
+lookups keyed by `item_id` / `(source, source_id)` / `alert_id`, no joins.
+Alerts are idempotent on `Alert.id` (`record_alert` returns `False` on a repeat).
+
+**Definition of done met.** `tests/test_storage.py` and `tests/test_wishlist.py`
+(48 tests total, all green) cover round-trips, Decimal precision, newest-first
+ordering + limit, `latest_observation`, alert idempotency, `mark_alert_sent`,
+feedback validation, and every wishlist error path (missing file, missing
+`items`, duplicate ids, invalid entry named by id-or-position, empty list).
+CI gains a storage schema dry-run step; `wishlist.py` added to the CLAUDE.md map.
+
+**Rejected.** Storing prices as `REAL` (loses cents); an ORM or a `Feedback`
+contract (both premature); committing the DB from PR CI (D3); raising raw
+`ValidationError`/`YAMLError` from the loader (the wishlist is hand-edited, so
+errors must name the offending entry).
+
+**Contracts untouched** — `contracts.py` was sufficient as frozen.
+
+---
+
+## Reorder: WP-4 before WP-3 (unblocking decision)
+
+**Decided.** Pull WP-4 (URL watcher) ahead of WP-3 (Allegro fetcher). WP-3 is
+blocked on 🧑 registration at developer.allegro.pl; WP-4 needs nothing external.
+Both are independent implementations of the `Fetcher` protocol, so the walking
+skeleton (WP-5: threshold notifier + daily cron) can go live on URL-watcher
+data alone — Allegro becomes an additive fetcher whenever credentials arrive,
+not a gate. Execution plan: `docs/plans/WP-4.md` (its D2 — adding `requests` +
+`beautifulsoup4` — still requires explicit 🧑 ratification before execution).
+
+**Rejected.** Waiting for Allegro (pointless stall); substituting another
+marketplace API (new registration, same class of blockage); building WP-5
+before any fetcher exists (nothing to notify about).

@@ -20,6 +20,10 @@ An agent that watches a wishlist and tells you when something on it becomes a
 
 ## Develop
 
+**Working on this repo with a coding agent? Start at
+[`docs/WORKFLOW.md`](docs/WORKFLOW.md)** — the five-step loop, copy-paste
+prompts, and who decides what.
+
 Uses [uv](https://docs.astral.sh/uv/).
 
 ```bash
