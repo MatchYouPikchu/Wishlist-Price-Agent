@@ -104,3 +104,19 @@ contract (both premature); committing the DB from PR CI (D3); raising raw
 errors must name the offending entry).
 
 **Contracts untouched** — `contracts.py` was sufficient as frozen.
+
+---
+
+## Reorder: WP-4 before WP-3 (unblocking decision)
+
+**Decided.** Pull WP-4 (URL watcher) ahead of WP-3 (Allegro fetcher). WP-3 is
+blocked on 🧑 registration at developer.allegro.pl; WP-4 needs nothing external.
+Both are independent implementations of the `Fetcher` protocol, so the walking
+skeleton (WP-5: threshold notifier + daily cron) can go live on URL-watcher
+data alone — Allegro becomes an additive fetcher whenever credentials arrive,
+not a gate. Execution plan: `docs/plans/WP-4.md` (its D2 — adding `requests` +
+`beautifulsoup4` — still requires explicit 🧑 ratification before execution).
+
+**Rejected.** Waiting for Allegro (pointless stall); substituting another
+marketplace API (new registration, same class of blockage); building WP-5
+before any fetcher exists (nothing to notify about).
