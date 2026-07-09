@@ -27,3 +27,6 @@ jobs:
 
       - name: Test
         run: uv run pytest
+
+      - name: Storage schema dry-run
+        run: uv run python -c "from agent.storage import Storage; Storage('/tmp/dryrun.db').close()"

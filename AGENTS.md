@@ -12,6 +12,7 @@ the stable brief — keep it ≤50 lines.
 - `src/agent/fetchers/` — `allegro.py` (Tier 1 API), `shop_url.py` (Tier 2 URLs).
 - `src/agent/llm/` — matcher, risk, judge, composer, extractor; `client.py` wraps
   all calls; `prompts/` holds one versioned `.md` per prompt.
+- `src/agent/wishlist.py` — parse `wishlist.yaml` → `WishlistItem` (friendly errors).
 - `src/agent/storage.py` — SQLite (v1); interface stays stable for DynamoDB (v2).
 - `src/agent/notify/email.py` — SMTP (v1) → SES (v2).
 - `src/agent/costs.py` — per-component cost ledger + budget assertion.
