@@ -120,3 +120,23 @@ not a gate. Execution plan: `docs/plans/WP-4.md` (its D2 — adding `requests` +
 **Rejected.** Waiting for Allegro (pointless stall); substituting another
 marketplace API (new registration, same class of blockage); building WP-5
 before any fetcher exists (nothing to notify about).
+
+---
+
+## WP-4 plan revision 2: browser-based fetching, Ceneo in scope
+
+**Decided.** Live probe (2026-07-09) showed ceneo.pl, x-kom.pl, and
+mediaexpert.pl all block plain HTTP (JS challenges / 403); only morele.net
+served full HTML. Plan revised: the URL watcher drives headless Chromium via
+`playwright` (single new dependency, still 🧑-gated) and extracts with
+Playwright locators — no separate HTML parser. Ceneo product pages become
+first-class watch targets (robots.txt permits product pages; search is
+disallowed and never used): one Ceneo URL = lowest price across shops, the
+best pre-LLM market signal available. ToS posture (D8): personal daily
+volume, no anti-blocking arms race — a site that challenges the browser is
+skipped, not fought.
+
+**Rejected.** `requests`+`beautifulsoup4` (3 of 4 probe targets blocked);
+hybrid HTTP+browser (two code paths for ~10 URLs/day); fighting bot
+protection (out of character and out of scope); Ceneo partner API (another
+registration wait — same blocker class as Allegro; may revisit).

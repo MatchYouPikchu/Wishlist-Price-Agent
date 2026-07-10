@@ -1,67 +1,84 @@
-# WP-4 execution plan — URL watcher (dumb version), pulled ahead of WP-3
+# WP-4 execution plan — URL watcher (browser-based), pulled ahead of WP-3
 
-Session-ready plan. Reviewed by 🧑 before execution. Contracts are frozen and
-sufficient — no contract changes.
+Session-ready plan, **revision 2**. Reviewed by 🧑 before execution. Contracts
+are frozen and sufficient — no contract changes.
+
+Revision 2 replaces the plain-HTTP design after a live feasibility probe
+(2026-07-09, from the dev container):
+
+| Site            | Plain HTTP GET                  | Verdict for `requests` |
+| --------------- | ------------------------------- | ---------------------- |
+| ceneo.pl        | JS fingerprint challenge        | blocked                |
+| x-kom.pl        | HTTP 403 + challenge            | blocked                |
+| mediaexpert.pl  | HTTP 403 + challenge            | blocked                |
+| morele.net      | HTTP 200, full page             | works                  |
+
+Most Polish shops — and Ceneo — require a real browser. Chromium + Playwright
+are pre-installed in the dev container and standard in GitHub Actions.
 
 ## Why WP-4 before WP-3 (D1 — the reorder)
 
-WP-3 (Allegro) is blocked on 🧑 credentials (developer.allegro.pl registration,
-which can take days). WP-4 needs no credentials, no accounts, nothing external.
-Both are independent implementations of the `Fetcher` protocol
-(`fetchers/base.py`), so nothing downstream cares which lands first — WP-5 can
-ship the walking skeleton on URL-watcher data alone, and Allegro slots in later
-as an additive fetcher. PLAN.md §3 is annotated with the swap; this WP's
-DECISIONS.md entry records it.
+Unchanged from revision 1: WP-3 is blocked on 🧑 Allegro credentials; WP-4
+needs nothing external. Both implement the `Fetcher` protocol independently,
+so WP-5 can ship the walking skeleton on URL-watcher data alone.
 
 ## Goal
 
 `src/agent/fetchers/shop_url.py`: given a `WishlistItem` with `shop_urls`,
-fetch each product page, extract the price with a **hand-written per-shop CSS
-selector**, and return `RawListing`s. Failures are logged, never raised. The
-self-healing LLM extractor is WP-11 — this version is deliberately dumb.
+open each product page in headless Chromium, extract the price with a
+**hand-written per-shop CSS selector**, and return `RawListing`s. Failures are
+logged, never raised. Ceneo product pages are first-class citizens: one Ceneo
+URL yields the *lowest price across shops* — the best market-context signal
+this product can get before the LLM judge exists.
 
 ## Out of scope
 
 - Allegro (WP-3, when creds arrive); pipeline wiring + cron (WP-5).
-- Self-healing extraction, cooldowns (WP-11). JS-rendered/anti-bot shops —
-  a shop that doesn't work with plain HTTP GET + CSS selector is documented
-  as unsupported in v1, not fought.
-- Search/discovery — this fetcher only watches exact URLs the user provides.
+- Self-healing extraction, cooldowns (WP-11).
+- Ceneo *search* (robots-disallowed; we only watch exact product URLs the
+  user supplies) and Ceneo multi-offer parsing (one lowest-price listing per
+  page in v1; a per-shop-offer `ceneo.py` fetcher is a possible later WP).
+- Retry/anti-blocking arms races: if a page challenges even a real browser,
+  log and skip. We do not fight.
 
 ## Design decisions (pre-made; D2 needs explicit 🧑 approval)
 
-- **D1 — reorder.** See above.
-- **D2 — two new dependencies: `requests` + `beautifulsoup4`.** ⚠️ CLAUDE.md
-  says no new dependencies without asking, so this is a 🧑 gate: fetching and
-  parsing real-world HTML with stdlib alone is masochism. Both libraries are
-  boring, ubiquitous, and agent-friendly. Rejected: `httpx`/`selectolax`
-  (better perf we don't need at ~10 URLs/day); scrapy (a framework — banned).
-  **Do not execute this WP until D2 is ratified.**
-- **D3 — selector registry lives in `config.py`.** `SHOP_SELECTORS:
-  dict[str, str]` mapping registrable domain → CSS selector for the price
-  node. Data, no logic — fits config.py's charter. Unknown domain → logged
-  skip, pointing at the registry (that's also WP-11's future hook).
-- **D4 — `RawListing` mapping.** `source="shop_url"`; `source_id` = the URL
-  (canonical enough for v1; it IS the identity of a watched page);
-  `title` = page `<title>` text (trimmed); `condition=NEW` (shop pages sell
-  new goods; used marketplaces are Tier 1's job); `shipping_price=None`
-  (unknown); `available=False` when the page fetches but the price node is
-  missing (likely delisted) — with the failure logged.
+- **D1 — reorder WP-4 ahead of WP-3.** Logged in DECISIONS.md.
+- **D2 — ⚠️ one new dependency: `playwright`.** 🧑 gate — do not execute
+  until ratified. Headless Chromium fetches AND extracts (Playwright
+  locators); no separate HTML-parser library. CI installs the browser with
+  `playwright install chromium` (cacheable); the dev container has it
+  pre-installed (launch via `executablePath` env already configured).
+  *Rejected:* `requests`+`beautifulsoup4` (probe: 3 of 4 targets blocked);
+  hybrid HTTP+browser (two code paths to maintain for ~10 URLs/day — the
+  browser handles morele-class shops too); scrapy (framework — banned).
+- **D3 — selector registry in `config.py`.** `SHOP_SELECTORS: dict[str, str]`
+  mapping registrable domain → CSS selector for the price node. Ships with
+  entries for `ceneo.pl`, `morele.net`, and 1–2 more chosen at execution
+  time. Unknown domain → logged skip pointing at the registry.
+- **D4 — `RawListing` mapping.** `source="shop_url"`; `source_id` = the URL;
+  `title` = page `<title>` (trimmed); `condition=NEW`; `shipping_price=None`;
+  price node present but empty/unparseable or missing → `available=False`
+  listing with the failure logged. For Ceneo pages the extracted price is the
+  page's lowest offer; `seller="ceneo:lowest"` marks that provenance.
 - **D5 — Polish price parsing is its own function.** `parse_price("1 099,00
-  zł") -> (Decimal("1099.00"), "PLN")`. Handles: non-breaking/thin spaces,
-  comma decimal separator, `zł`/`PLN` suffix, plain `1099` and `1099.00`
-  forms. Unparseable → `None`, logged. This tiny function is where the bugs
-  will live — test it hard.
-- **D6 — tests run on committed HTML snapshots, live fetch is manual.** Real
-  shops are flaky/bot-guarded from CI, so the test suite uses saved page
-  snapshots under `tests/fixtures/shop_pages/` (trimmed to the relevant DOM,
-  a few KB each — not full 2MB pages). The WP's "prices from 2–3 real shop
-  pages land in storage" DoD is met by a one-shot manual run documented
-  below. Bonus: these snapshots seed WP-11's extractor eval corpus.
-- **D7 — politeness.** Honest descriptive User-Agent
-  (`wishlist-price-agent/0.1 (+repo URL)`), 10s timeout, one GET per URL per
-  run, no retries loops beyond a single second attempt. We are a personal
-  price watcher, not a crawler.
+  zł") -> (Decimal("1099.00"), "PLN")`. Handles non-breaking/thin spaces,
+  comma decimals, `zł`/`PLN` suffixes, bare numbers. Unparseable → `None`,
+  logged. Test it hard — this is where the bugs live.
+- **D6 — tests run on committed HTML snapshots via `file://`.** The fetcher
+  accepts any URL, so tests point it at trimmed snapshot files under
+  `tests/fixtures/shop_pages/` — the *same* code path as live pages, no
+  mocking of the extraction logic. Live fetching is a manual DoD script, not
+  CI. Snapshots seed WP-11's extractor eval corpus.
+- **D7 — politeness.** One page-load per URL per run, 15s navigation timeout,
+  no retries, no parallel hammering (sequential fetches), default Chromium
+  UA (being a real browser is the mechanism, not a disguise). Volume: a
+  handful of pages, once daily.
+- **D8 — ToS posture (🧑 acknowledges at D2 ratification).** Ceneo robots.txt
+  permits product pages and disallows search; we never search. Shop ToS
+  generally frown on automated collection; at personal, low-volume,
+  non-commercial use this is accepted by the owner. If a site blocks the
+  browser, we skip it permanently rather than escalate.
 
 ## Deliverables
 
@@ -69,56 +86,60 @@ self-healing LLM extractor is WP-11 — this version is deliberately dumb.
 
 ```python
 class ShopUrlFetcher:
-    """Tier-2 fetcher: watch exact product URLs with per-shop CSS selectors."""
+    """Tier-2 fetcher: watch exact product URLs in headless Chromium."""
 
     def __init__(self, selectors: Mapping[str, str] | None = None,
-                 timeout: float = 10.0) -> None: ...
+                 nav_timeout_ms: int = 15_000) -> None: ...
         # selectors defaults to config.SHOP_SELECTORS
 
     def fetch(self, item: WishlistItem) -> list[RawListing]: ...
-        # one listing per item.shop_urls entry that yielded a price;
-        # every failure (HTTP error, timeout, unknown domain, selector miss,
-        # unparseable price) is logging.warning'd and skipped — NEVER raised
+        # one listing per shop_urls entry; every failure (nav error, timeout,
+        # unknown domain, selector miss, unparseable price) is
+        # logging.warning'd and handled per D4 — NEVER raised
 
 def parse_price(text: str) -> tuple[Decimal, str] | None: ...   # D5
 def domain_of(url: str) -> str: ...                             # registry key
 ```
 
-2. `config.py`: `SHOP_SELECTORS` with entries for the 2–3 real shops chosen
-   at execution time (🧑 may pre-supply product URLs they actually want
-   watched in `wishlist.yaml`; otherwise the executor picks 2–3 well-known
-   server-rendered PL electronics shops and notes them in the session summary).
-3. `pyproject.toml`: `requests`, `beautifulsoup4` (after D2 ratification).
-4. Trimmed HTML snapshots in `tests/fixtures/shop_pages/`.
-5. Manual DoD script (not CI): `uv run python -m agent.fetchers.shop_url
-   --once` — fetches every `shop_urls` entry in `wishlist.yaml` live, prints
-   the listings, and records observations into `Storage(config.DB_PATH)`.
-   Paste its output into the PR description as DoD evidence.
+   Browser lifecycle: one Playwright/Chromium instance per `fetch()` call
+   (context-managed), pages opened sequentially. Honor
+   `PLAYWRIGHT_BROWSERS_PATH`/pre-installed Chromium; never run
+   `playwright install` at import or fetch time.
+
+2. `config.py`: `SHOP_SELECTORS` (D3).
+3. `pyproject.toml`: `playwright` (after D2 ratification). `ci.yml`: browser
+   install step with cache for the test job.
+4. Trimmed snapshots in `tests/fixtures/shop_pages/` (a few KB each — the
+   relevant DOM around the price node, not 2MB dumps), including one Ceneo
+   product page and one morele product page.
+5. Manual DoD script: `uv run python -m agent.fetchers.shop_url --once` —
+   live-fetches every `shop_urls` entry in `wishlist.yaml`, prints listings,
+   records observations into `Storage(config.DB_PATH)`. Output pasted into
+   the PR as DoD evidence ("prices from 2–3 real shop pages land in storage").
 
 ## Tests (definition of done)
 
 `tests/test_shop_url.py`:
-- `parse_price`: `"1 099,00 zł"`, `"1099,00 zł"` (nbsp + thin-space variants),
+- `parse_price`: `"1 099,00 zł"` (nbsp + thin-space variants), `"1099,00 zł"`,
   `"5 499 zł"`, `"549.00"`, `"PLN 549,00"`, garbage → `None`, empty → `None`.
-- `domain_of` normalizes `www.` and ports.
-- Selector extraction: each committed snapshot yields the expected
-  `RawListing` with exact `Decimal` price, `source="shop_url"`,
-  `source_id=url`, `condition=NEW`.
-- Failure paths (mocked transport): HTTP 404, timeout, unknown domain,
-  selector miss (→ `available=False` listing OR skip per D4), unparseable
-  price — each returns without raising and logs a warning
-  (`caplog` asserts).
+- `domain_of`: normalizes `www.`, ports, and maps subdomains to the
+  registrable domain used by the registry.
+- Snapshot extraction (real browser over `file://`): each committed snapshot
+  yields the expected `RawListing` — exact `Decimal`, `source="shop_url"`,
+  `source_id`=url, `condition=NEW`; Ceneo snapshot carries
+  `seller="ceneo:lowest"`.
+- Failure paths: nonexistent `file://` path (nav error), snapshot without the
+  price node (→ `available=False` per D4), unknown domain (skip), unparseable
+  price text — each returns without raising and logs (`caplog`).
 - Integration: fetched listing → `PriceObservation` → `Storage` round-trip.
-- Politeness: request carries the custom User-Agent and timeout (assert on
-  the mocked call).
 
 ## Session checklist
 
-1. Confirm D2 was ratified by 🧑 before adding dependencies.
+1. Confirm D2 (and D8) were ratified by 🧑 before adding the dependency.
 2. `uv run pytest` + `uv run ruff check .` + `uv run ruff format --check .`
-   green; run the manual `--once` script and capture output for the PR.
-3. `DECISIONS.md`: WP-4 entry incl. the reorder (D1) and chosen shops.
-4. `CLAUDE.md`/`AGENTS.md`: no layout change expected (shop_url.py already
-   mapped); add a durable-facts line naming the supported shops.
+   green; run the manual `--once` script; capture output for the PR.
+3. `DECISIONS.md`: WP-4 entry incl. D1 reorder, probe table, chosen shops.
+4. `CLAUDE.md`/`AGENTS.md`: durable-facts lines — supported shops and "URL
+   watcher needs Chromium (Playwright); never `playwright install` in-session".
 5. Commit tagged `WP-4`; push; open PR; run plan-guardian; report verdict.
 6. Do NOT touch `src/agent/contracts.py`.
